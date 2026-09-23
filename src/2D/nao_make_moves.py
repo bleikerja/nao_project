@@ -19,7 +19,7 @@ motion_proxy.stiffnessInterpolation("LShoulderPitch", 1.0, 1.0)
 # Name, Zielwinkel (Radiant), Zeitdauer (Sekunden), Absolut?
 # motion_proxy.angleInterpolation("LShoulderPitch", 2.0, 1.0, True)
 
-with open('nao_angles.csv', 'r') as file:
+with open('../../generated/nao_angles.csv', 'r') as file:
     angles_list = list(csv.DictReader(file))
     motion_proxy.stiffnessInterpolation(angles_list[0].keys(), 1.0, 0.5)
     for i in range(0, len(angles_list)):

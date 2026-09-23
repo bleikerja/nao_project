@@ -33,7 +33,7 @@ def calculate_angle3(a: tuple[int, int], b: tuple[int, int], c: tuple[int, int],
 def normalize_angle(a):
     return (a + math.pi) % (2 * math.pi) - math.pi
 
-with open('roboter_bewegungsdaten.csv', 'r', encoding='utf-8', newline='') as file:
+with open('../../generated/roboter_bewegungsdaten.csv', 'r', encoding='utf-8', newline='') as file:
     reader = csv.DictReader(file)
     for row in reader:
         angles_row = {}
@@ -49,7 +49,7 @@ with open('roboter_bewegungsdaten.csv', 'r', encoding='utf-8', newline='') as fi
 
             angles_row[key] = angle
         angles.append(angles_row)
-    with open("nao_angles.csv", mode='w', newline='') as new_file:
+    with open("../../generated/nao_angles.csv", mode='w', newline='') as new_file:
         writer = csv.DictWriter(new_file, fieldnames=angles[0].keys())
         writer.writeheader() 
         writer.writerows(angles)

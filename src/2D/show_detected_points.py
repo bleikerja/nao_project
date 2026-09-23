@@ -104,4 +104,4 @@ def generate_skeleton_video(csv_path, output_path="skelett_bewegung.mp4", fps=10
  
  
 # Pfad zu deiner CSV-Datei angeben
-generate_skeleton_video("roboter_bewegungsdaten.csv", "skelett_bewegung.mp4", fps=15)
+generate_skeleton_video("../../generated/roboter_bewegungsdaten.csv", "skelett_bewegung.mp4", fps=15)

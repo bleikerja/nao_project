@@ -6,10 +6,10 @@ import time
 # 1. Kompaktes YOLO-Pose Modell laden (Nano-Version)
 # Das 'n' Modell ist extrem leichtgewichtig und ideal für die CPU-Nutzung optimiert.
 print("Lade YOLOv8-Pose Modell...")
-model = YOLO('yolov8n-pose.pt')
+model = YOLO('../yolov8n-pose.pt')
 
 # 2. Ihr aufgenommenes Video laden
-video_path = "downloaded_video_2_hell.avi"  # Hier den Pfad zu Ihrem Video eintragen
+video_path = "../../example-data/downloaded_video_2_hell.avi"  # Hier den Pfad zu Ihrem Video eintragen
 cap = cv2.VideoCapture(video_path)
 fps = cap.get(cv2.CAP_PROP_FPS)
 print(fps)
@@ -65,7 +65,7 @@ cap.release()
 # 4. Daten in eine übersichtliche CSV-Struktur bringen und speichern
 if all_frames_data:
     df = pd.DataFrame(all_frames_data)
-    output_file = "roboter_bewegungsdaten.csv"
+    output_file = "../../generated/roboter_bewegungsdaten.csv"
     df.to_csv(output_file, index=False)
 
     elapsed_time = time.time() - start_time
