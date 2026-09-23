@@ -6,8 +6,8 @@ import cv2
 import mediapipe as mp
 
 
-VIDEO_PATH = "../../example-data/downloaded_video_2_hell.avi"
-OUTPUT_FILE = "../../generated/roboter_bewegungsdaten_3d.csv"
+VIDEO_PATH = "../../example-data/downloaded_video_1_hell.avi"
+OUTPUT_FILE = "../../generated/roboter_bewegungsdaten_1_3d.csv"
 
 # MediaPipe Pose liefert 33 Landmarks. Diese Namen werden auf die im Projekt
 # verwendeten Namen abgebildet.

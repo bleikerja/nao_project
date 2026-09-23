@@ -4,7 +4,7 @@ Nach der Erzeugung der CSV kann daraus ein Video mit drei Ansichten erzeugt werd
 
 ```bash
 cd src/3D
-python 3_visualize_3d_csv.py
+python show_detected_points.py
 ```
 
 Das Ergebnis wird unter `generated/skelett_3d.csv.mp4` gespeichert:

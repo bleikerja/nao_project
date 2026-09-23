@@ -3,10 +3,9 @@ from pathlib import Path
 
 import cv2
 import numpy as np
-from scipy.constants import point
 
-INPUT_FILE = "../../generated/roboter_bewegungsdaten_3d.csv"
-OUTPUT_FILE = "../../generated/skelett_3d.csv.mp4"
+INPUT_FILE = "../../generated/roboter_bewegungsdaten_1_3d.csv"
+OUTPUT_FILE = "../../generated/skelett_1_3d.csv.mp4"
 FPS = 15
 WIDTH = 1280
 HEIGHT = 720
@@ -51,7 +50,7 @@ def get_point(row, name):
 def limits(rows):
     points = []
     for row in rows:
-        points.extend(point(row, name) for name in KEYPOINTS)
+        points.extend(get_point(row, name) for name in KEYPOINTS)
     points = [item for item in points if item is not None]
     if not points:
         raise ValueError("Die CSV enthält keine gültigen 3D-Punkte.")
