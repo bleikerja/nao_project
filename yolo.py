@@ -16,10 +16,10 @@ print(fps)
 
 # Namensliste der 17 Keypoints (Standard COCO-Format von YOLO)
 KEYPOINT_NAMES = [
-    "Nase", "l_Auge", "r_Auge", "l_Ohr", "r_Ohr",
-    "LShoulderRoll", "RShoulderRoll", "LElbowRoll", "RElbowRoll",
-    "LWrist", "RWrist", "LHipRoll", "RHipRoll",
-    "LKnee", "RKnee", "LAnkle", "RAnkle"
+    "Nose", "L_Eye", "R_Eye", "L_Ear", "R_Ear",
+    "L_Shoulder", "R_Shoulder", "L_Elbow", "R_Elbow",
+    "L_Wrist", "R_Wrist", "L_Hip", "R_Hip",
+    "L_Knee", "R_Knee", "L_Ankle", "R_Ankle"
 ]
 
 all_frames_data = []
