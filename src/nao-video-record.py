@@ -12,7 +12,7 @@ ROBOT_PASS = "nao"           # Default NAO password is 'nao'
 
 # Paths
 REMOTE_VIDEO_PATH = "/home/nao/recordings/my_video"  # Note: Do not append extension (.avi), NAO adds it automatically
-LOCAL_OUTPUT_PATH = "../../example-data/downloaded_video_3_hell.avi"  # Where to save it on your computer
+LOCAL_OUTPUT_PATH = "../example-data/downloaded_video_3_hell.avi"  # Where to save it on your computer
 
 RECORD_DURATION = 30  # Duration in seconds
 
