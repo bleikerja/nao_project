@@ -1,80 +1,96 @@
-# -*- coding: utf-8 -*-
-"""Play proportionally retargeted 3D motion on a NAO (Python 2.7/NAOqi)."""
-from __future__ import print_function
-
-import csv
-import math
-import os
 import time
-
+import numpy as np
 from naoqi import ALProxy
 
-
-ROBOT_IP = os.environ.get("NAO_IP", "127.0.0.1")
-PORT = int(os.environ.get("NAO_PORT", "9559"))
-INPUT_FILE = "../../generated/nao_angles_3d.csv"
-STEP_SECONDS = 0.08
-
-# These are the actual NAO joint names produced by the proportional retargeter.
-JOINTS = [
-    "LShoulderPitch", "LShoulderRoll", "LElbowRoll",
-    "RShoulderPitch", "RShoulderRoll", "RElbowRoll",
-    "LHipPitch", "LHipRoll", "LKneePitch",
-    "RHipPitch", "RHipRoll", "RKneePitch",
+# Deine Rohdaten (gekürzt für das Skript, Zeile 6 vervollständigt)
+raw_data = [
+    [1, -0.032197, -0.642612, -0.344683, 0.999792, -0.004873, -0.659776, -0.318384, 0.999477, -0.031072, -0.668587,
+     -0.352273, 0.999677, 0.073113, -0.640459, -0.224719, 0.999793, -0.074680, -0.603661, -0.209585, 0.999430, 0.165418,
+     -0.456877, -0.110116, 0.999968, -0.146251, -0.517256, -0.034268, 0.999899, 0.202776, -0.239183, -0.076584,
+     0.998349, -0.141510, -0.204259, -0.047484, 0.990249, 0.186690, -0.003589, -0.062994, 0.997897, -0.161586, 0.007689,
+     -0.125209, 0.994314, 0.095503, 0.003359, 0.017810, 0.999717, -0.093541, -0.007263, -0.016298, 0.999671, 0.090997,
+     0.415478, -0.018251, 0.951697, -0.043671, 0.329242, 0.020019, 0.910588, 0.100482, 0.747230, 0.176382, 0.760188,
+     -0.061834, 0.708176, 0.195853, 0.778652],
+    [2, -0.034425, -0.641442, -0.347748, 0.999776, -0.007230, -0.659013, -0.323075, 0.999432, -0.033369, -0.667926,
+     -0.356495, 0.999657, 0.070905, -0.640063, -0.232213, 0.999766, -0.077815, -0.603729, -0.215375, 0.999388, 0.164816,
+     -0.457191, -0.115808, 0.999964, -0.146446, -0.517764, -0.041511, 0.999894, 0.201527, -0.239798, -0.088782,
+     0.998224, -0.153652, -0.204543, -0.052046, 0.990043, 0.182532, -0.004373, -0.072805, 0.997573, -0.174776, 0.007375,
+     -0.126479, 0.994091, 0.095215, 0.003348, 0.017607, 0.999712, -0.093207, -0.007223, -0.016092, 0.999669, 0.092517,
+     0.412326, -0.010241, 0.951991, -0.042519, 0.327152, 0.032760, 0.910230, 0.100639, 0.739709, 0.186168, 0.765466,
+     -0.061574, 0.704955, 0.211647, 0.783491],
+    [3, -0.035488, -0.641305, -0.348779, 0.999771, -0.008123, -0.658979, -0.324660, 0.999423, -0.034260, -0.667920,
+     -0.357766, 0.999653, 0.070462, -0.640030, -0.234695, 0.999759, -0.078580, -0.604292, -0.216770, 0.999371, 0.164562,
+     -0.457368, -0.118603, 0.999963, -0.146486, -0.518512, -0.042472, 0.999888, 0.200385, -0.240050, -0.092745,
+     0.998213, -0.157348, -0.204756, -0.052222, 0.989843, 0.181632, -0.005508, -0.075412, 0.997519, -0.178641, 0.007269,
+     -0.126494, 0.993852, 0.095059, 0.003313, 0.017387, 0.999712, -0.093013, -0.007142, -0.015865, 0.999669, 0.094399,
+     0.409462, -0.002963, 0.953319, -0.040497, 0.325490, 0.037768, 0.912241, 0.101011, 0.732628, 0.199391, 0.773110,
+     -0.058326, 0.701276, 0.221085, 0.790580],
+    [4, -0.035526, -0.640593, -0.348795, 0.999757, -0.008197, -0.658480, -0.324609, 0.999383, -0.034414, -0.667441,
+     -0.357732, 0.999632, 0.070372, -0.639821, -0.234411, 0.999736, -0.079473, -0.604295, -0.216649, 0.999329, 0.164619,
+     -0.457382, -0.118179, 0.999960, -0.146548, -0.518689, -0.043795, 0.999884, 0.200373, -0.240013, -0.091958,
+     0.998122, -0.158964, -0.204763, -0.055497, 0.989828, 0.181544, -0.006251, -0.075054, 0.997356, -0.179385, 0.007265,
+     -0.130211, 0.993788, 0.095029, 0.003301, 0.017483, 0.999713, -0.092972, -0.007099, -0.015939, 0.999672, 0.096439,
+     0.408545, 0.000007, 0.954124, -0.040145, 0.325319, 0.038423, 0.913586, 0.102972, 0.730719, 0.201958, 0.779910,
+     -0.058356, 0.699688, 0.224962, 0.796540],
+    [5, -0.036133, -0.639098, -0.349724, 0.999752, -0.008689, -0.657283, -0.325793, 0.999366, -0.034948, -0.666337,
+     -0.358686, 0.999626, 0.070303, -0.638932, -0.235353, 0.999723, -0.079797, -0.604223, -0.217148, 0.999307, 0.164621,
+     -0.457033, -0.118000, 0.999958, -0.146551, -0.518947, -0.044313, 0.999882, 0.200377, -0.239140, -0.091713,
+     0.998105, -0.161096, -0.204864, -0.055420, 0.989930, 0.181693, -0.006212, -0.072849, 0.997298, -0.181189, 0.007635,
+     -0.130273, 0.993750, 0.095014, 0.003291, 0.017800, 0.999713, -0.092952, -0.007070, -0.016240, 0.999675, 0.098837,
+     0.408585, 0.000315, 0.954460, -0.039776, 0.325306, 0.037298, 0.915377, 0.104234, 0.730738, 0.201756, 0.781988,
+     -0.058157, 0.699649, 0.223838, 0.800429],
+    [6, -0.038001, -0.639049, -0.349511, 0.999752, -0.010661, -0.657274, -0.325747, 0.999367, -0.036901, -0.666319,
+     -0.358524, 0.999629, 0.068913, -0.638928, -0.235202, 0.999719, -0.081160, -0.604291, -0.216966, 0.999305, 0.164373,
+     -0.457066, -0.117857, 0.999956, -0.146716, -0.519166, -0.044085, 0.999881, 0.200299, -0.239221, -0.091121,
+     0.998097, -0.162046, -0.204984, -0.054206, 0.989908, 0.181725, -0.006596, -0.072722, 0.997234, -0.181481, 0.007529,
+     -0.129143, 0.993661, 0.094916, 0.003275, 0.017729, 0.999709, -0.092843, -0.007043, -0.016174, 0.999673, 0.098970,
+     0.408397, 0.000168, 0.954142, -0.038473, 0.324893, 0.036647, 0.914993, 0.105265, 0.730862, 0.200592, 0.782280,
+     -0.055831, 0.699729, 0.222402, 0.795000]
 ]
 
+# Proxies zum NAO initialisieren
+motion = ALProxy("ALMotion", "NAO_IP", 9559)
+effector = "RArm"  # Rechter Arm gesteuert über das Handgelenk
+frame = 0  # FRAME_TORSO (Relativ zur Brust des NAO)
 
-def finite(value):
-    return not (math.isnan(value) or math.isinf(value))
+# Extrahiere die transformierten Koordinaten für das rechte Handgelenk (RWrist)
+punkte_nao = []
+for zeile in raw_data:
+    # RWrist_X, RWrist_Y, RWrist_Z befinden sich bei Index 41, 42, 43
+    mp_x = zeile[41]
+    mp_y = zeile[42]
+    mp_z = zeile[43]
 
+    # Transformation von MediaPipe in das NAO-Koordinatensystem
+    nao_x = -mp_z
+    nao_y = -mp_x
+    nao_z = -mp_y
 
-def read_rows():
-    with open(INPUT_FILE, "rb") as source:
-        return list(csv.DictReader(source))
+    # Skalierungsfaktor: Da sich deine Handgelenkswerte im Bereich von
+    # ca. 0.1 bis 0.2 Metern bewegen, passt das perfekt in NAOs Reichweite.
+    punkte_nao.append([nao_x, nao_y, nao_z])
 
+# Bewegungsschleife: Folgt den Richtungsvektoren von Frame zu Frame
+# Wir haben 6 Frames, das ergibt 5 Richtungsvektoren.
+for i in range(len(punkte_nao) - 1):
+    start = np.array(punkte_nao[i])
+    ziel = np.array(punkte_nao[i + 1])
 
-def main():
-    rows = read_rows()
-    if not rows:
-        raise RuntimeError("Die 3D-Winkel-CSV enthält keine Frames.")
+    # Richtungsvektor berechnen (Ziel minus Start)
+    vektor = ziel - start
 
-    motion = ALProxy("ALMotion", ROBOT_IP, PORT)
-    try:
-        background = ALProxy("ALBackgroundMovement", ROBOT_IP, PORT)
-        background.setEnabled(False)
-    except Exception as error:
-        print("Hintergrundbewegung konnte nicht deaktiviert werden: {}".format(error))
+    # Erstelle die SE3-Transformationsmatrix für relative Bewegungen
+    transform = [1.0, 0.0, 0.0, vektor[0],
+                 0.0, 1.0, 0.0, vektor[1],
+                 0.0, 0.0, 1.0, vektor[2],
+                 0.0, 0.0, 0.0, 1.0]
 
-    available = [name for name in JOINTS if name in rows[0]]
-    if not available:
-        raise RuntimeError("Keine passenden NAO-Gelenke in der CSV gefunden.")
+    # Da deine Daten von Frame zu Frame springen:
+    # Bei 20 Bildern pro Sekunde (fps) dauert 1 Frame exakt 0.05 Sekunden.
+    zeit_pro_frame = 0.05
 
-    motion.stiffnessInterpolation(available, 1.0, 0.5)
-    last = dict((name, 0.0) for name in available)
+    # Bewegung ausführen (0.1 steuert die Dynamik/Flüssigkeit)
+    motion.changeTransform(effector, frame, transform, 0.1)
 
-    try:
-        for row in rows:
-            names = []
-            angles = []
-            for name in available:
-                raw = row.get(name, "")
-                try:
-                    value = float(raw)
-                    if not finite(value):
-                        raise ValueError()
-                except (TypeError, ValueError):
-                    value = last[name]
-                names.append(name)
-                angles.append(value)
-                last[name] = value
-
-            motion.setAngles(names, angles, 0.7)
-            time.sleep(STEP_SECONDS)
-    finally:
-        motion.stiffnessInterpolation(available, 0.0, 0.5)
-
-    print("Proportionale 3D-Bewegung erfolgreich an den NAO übertragen.")
-
-
-if __name__ == "__main__":
-    main()
+    # Warten, bis der nächste Vektor an der Reihe ist
+    time.sleep(zeit_pro_frame)

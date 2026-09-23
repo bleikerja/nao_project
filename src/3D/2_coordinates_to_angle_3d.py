@@ -10,11 +10,12 @@ OUTPUT_FILE = Path("../../generated/nao_angles_3d.csv")
 MIN_VISIBILITY = 0.6
 SMOOTHING = 0.35
 
-# This is a kinematic retargeter, not a direct human-angle copy. Human segment
-# directions are converted into the NAO's joint coordinate conventions. Limb
-# lengths therefore do not need to match: the NAO reproduces the direction of
-# each normalized human segment with its own proportions.
+def calculate_angle(a:tuple[int,int,int], b:tuple[int,int,int], c:tuple[int,int,int], negate = True) -> float:
+    vector_ba = np.array([a[0] - b[0], a[1] - b[1], a[2] - b[2]])
+    vector_bc = np.array([c[0] - b[0], c[1] - b[1], c[2] - b[2]])
 
+    cos = np.dot(vector_ba, vector_bc) / (np.linalg.norm(vector_ba) * np.linalg.norm(vector_bc))
+    return normalize_angle((-1 if negate else 1) * (math.pi - math.acos(cos)))
 
 def normalize(vector):
     length = np.linalg.norm(vector)
