@@ -1,16 +1,41 @@
-### 3D-CSV als Video darstellen
+### Proportionale 1:1-Übertragung
 
-Nach der Erzeugung der CSV kann daraus ein Video mit drei Ansichten erzeugt werden:
+Die 3D-Pipeline verwendet jetzt ein kinematisches Retargeting statt die menschlichen Winkel direkt als NAO-Winkel zu behandeln.
+
+Ablauf:
+
+```text
+3D-Landmarks
+→ normalisierte Körpersegmentrichtungen
+→ NAO-Gelenkorientierungen
+→ NAO-Gelenkgrenzen
+→ zeitliche Glättung
+→ ALMotion
+```
+
+Die menschlichen und NAO-Gliedmaßen dürfen dadurch unterschiedliche Längen haben. Übertragen werden Bewegungsrichtung und Gelenkorientierung, nicht absolute Koordinaten. Das ist die sinnvolle Bedeutung von proportionaler 1:1-Übertragung bei unterschiedlichen Körperproportionen.
+
+Ausführung auf Python 3:
 
 ```bash
 cd src/3D
-python show_detected_points.py
+python 2_coordinates_to_angle_3d.py
 ```
 
-Das Ergebnis wird unter `generated/skelett_3d.csv.mp4` gespeichert:
+Ausführung mit Python 2.7/NAOqi:
 
-- **Frontansicht:** X/Y
-- **Seitenansicht:** Z/Y; hier ist die geschätzte Bewegung in der Tiefe sichtbar
-- **Schrägansicht:** kombinierte X/Y/Z-Darstellung
+```bash
+set NAO_IP=192.168.200.74
+set NAO_PORT=9559
+python 3_nao_make_moves_3d.py
+```
 
-Die Visualisierung verwendet die relativen MediaPipe-3D-Landmarks aus `roboter_bewegungsdaten_3d.csv`. Sie zeigt keine absolute Entfernung zur NAO-Kamera.
+Vor dem echten Roboterlauf:
+
+1. mit Choregraphe oder angehobenen Roboterfüßen testen;
+2. prüfen, ob links/rechts und Vorwärtsrichtung korrekt sind;
+3. Gelenkgrenzen für das konkrete NAO-Modell validieren;
+4. zunächst `setAngles` mit niedriger Geschwindigkeit verwenden;
+5. eine Not-Aus-Möglichkeit bereithalten.
+
+Die monokulare MediaPipe-Z-Tiefe bleibt eine Schätzung. Eine geometrisch exakte 1:1-Reproduktion ist mit der eingebauten RGB-Kamera nicht garantierbar.
