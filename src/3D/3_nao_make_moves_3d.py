@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 import time
 import numpy as np
 from naoqi import ALProxy
@@ -49,7 +50,7 @@ raw_data = [
 ]
 
 # Proxies zum NAO initialisieren
-motion = ALProxy("ALMotion", "NAO_IP", 9559)
+motion = ALProxy("ALMotion", "127.0.0.1", 63984)
 effector = "RArm"  # Rechter Arm gesteuert über das Handgelenk
 frame = 0  # FRAME_TORSO (Relativ zur Brust des NAO)
 
@@ -90,7 +91,7 @@ for i in range(len(punkte_nao) - 1):
     zeit_pro_frame = 0.05
 
     # Bewegung ausführen (0.1 steuert die Dynamik/Flüssigkeit)
-    motion.changeTransform(effector, frame, transform, 0.1)
+    motion.changeTransform(effector, frame, transform, 0.1, 63)
 
     # Warten, bis der nächste Vektor an der Reihe ist
     time.sleep(zeit_pro_frame)
