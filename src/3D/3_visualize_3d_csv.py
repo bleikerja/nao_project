@@ -3,7 +3,7 @@ from pathlib import Path
 
 import cv2
 import numpy as np
-
+from scipy.constants import point
 
 INPUT_FILE = "../../generated/roboter_bewegungsdaten_3d.csv"
 OUTPUT_FILE = "../../generated/skelett_3d.csv.mp4"
