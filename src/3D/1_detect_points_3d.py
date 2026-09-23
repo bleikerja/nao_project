@@ -1,85 +1,104 @@
-import cv2
-import pandas as pd
-from ultralytics import YOLO
+import csv
 import time
+from pathlib import Path
 
-# 1. Kompaktes YOLO-Pose Modell laden (Nano-Version)
-print("Lade YOLOv8-Pose Modell...")
-model = YOLO('../yolov8n-pose.pt')
+import cv2
+import mediapipe as mp
 
-# 2. Ihr aufgenommenes Video laden
-video_path = "../../example-data/downloaded_video_2_hell.avi"  # Hier den Pfad zu Ihrem Video eintragen
-cap = cv2.VideoCapture(video_path)
-fps = cap.get(cv2.CAP_PROP_FPS)
-print(f"Video-FPS: {fps}")
 
-# Namensliste der 17 Keypoints (Standard COCO-Format von YOLO)
-KEYPOINT_NAMES = [
-    "Nase", "l_Auge", "r_Auge", "l_Ohr", "r_Ohr",
-    "LShoulderRoll", "RShoulderRoll", "LElbowRoll", "RElbowRoll",
-    "LWrist", "RWrist", "LHipRoll", "RHipRoll",
-    "LKnee", "RKnee", "LAnkle", "RAnkle"
-]
+VIDEO_PATH = "../../example-data/downloaded_video_2_hell.avi"
+OUTPUT_FILE = "../../generated/roboter_bewegungsdaten_3d.csv"
 
-all_frames_data = []
-frame_count = 0
+# MediaPipe Pose liefert 33 Landmarks. Diese Namen werden auf die im Projekt
+# verwendeten Namen abgebildet.
+LANDMARK_MAP = {
+    "Nase": mp.solutions.pose.PoseLandmark.NOSE,
+    "l_Auge": mp.solutions.pose.PoseLandmark.LEFT_EYE,
+    "r_Auge": mp.solutions.pose.PoseLandmark.RIGHT_EYE,
+    "l_Ohr": mp.solutions.pose.PoseLandmark.LEFT_EAR,
+    "r_Ohr": mp.solutions.pose.PoseLandmark.RIGHT_EAR,
+    "LShoulderRoll": mp.solutions.pose.PoseLandmark.LEFT_SHOULDER,
+    "RShoulderRoll": mp.solutions.pose.PoseLandmark.RIGHT_SHOULDER,
+    "LElbowRoll": mp.solutions.pose.PoseLandmark.LEFT_ELBOW,
+    "RElbowRoll": mp.solutions.pose.PoseLandmark.RIGHT_ELBOW,
+    "LWrist": mp.solutions.pose.PoseLandmark.LEFT_WRIST,
+    "RWrist": mp.solutions.pose.PoseLandmark.RIGHT_WRIST,
+    "LHipRoll": mp.solutions.pose.PoseLandmark.LEFT_HIP,
+    "RHipRoll": mp.solutions.pose.PoseLandmark.RIGHT_HIP,
+    "LKnee": mp.solutions.pose.PoseLandmark.LEFT_KNEE,
+    "RKnee": mp.solutions.pose.PoseLandmark.RIGHT_KNEE,
+    "LAnkle": mp.solutions.pose.PoseLandmark.LEFT_ANKLE,
+    "RAnkle": mp.solutions.pose.PoseLandmark.RIGHT_ANKLE,
+}
 
-print(f"Starte 3D-Videoanalyse auf der CPU für: {video_path}")
-start_time = time.time()
 
-while cap.isOpened():
-    success, frame = cap.read()
-    if not success:
-        break
+def main():
+    video_path = Path(VIDEO_PATH)
+    output_path = Path(OUTPUT_FILE)
+    output_path.parent.mkdir(parents=True, exist_ok=True)
 
-    frame_count += 1
+    cap = cv2.VideoCapture(str(video_path))
+    if not cap.isOpened():
+        raise RuntimeError(f"Video konnte nicht geöffnet werden: {video_path}")
 
-    # 3. KI-Erkennung explizit auf der CPU ausführen
-    results = model(frame, device='cpu', verbose=False)
+    fps = cap.get(cv2.CAP_PROP_FPS) or 10.0
+    fieldnames = ["Frame"]
+    for name in LANDMARK_MAP:
+        fieldnames.extend([f"{name}_X", f"{name}_Y", f"{name}_Z", f"{name}_visibility"])
 
-    for result in results:
-        # Prüfen, ob Keypoints vorhanden sind und ob das xyn-Attribut (bzw. xy) Daten enthält
-        if result.keypoints is not None and len(result.keypoints.xy) > 0:
+    frame_count = 0
+    written_frames = 0
+    start_time = time.time()
 
-            # .xy liefert [X, Y], .xyn liefert normalisierte Werte.
-            # Für die 3D-Schätzung nutzen wir result.keypoints.data, falls verfügbar,
-            # oder lesen die normalisierten/Pixel-Koordinaten aus.
-            # Da YOLOv8 standardmäßig eine Konfidenz (Sichtbarkeit) als 3. Wert liefert,
-            # nutzen wir diese als relative Tiefen-Annäherung (Z), sofern kein echtes 3D-Lifting aktiv ist.
-            joints = result.keypoints.data[0].cpu().numpy()  # Form: [17, 3] -> X, Y, Sichtbarkeit/Tiefe
+    # model_complexity=2 ist genauer, aber langsamer. Die Verarbeitung sollte
+    # auf einem Rechner erfolgen; der NAO liefert nur den Videostream.
+    with mp.solutions.pose.Pose(
+        static_image_mode=False,
+        model_complexity=2,
+        smooth_landmarks=True,
+        enable_segmentation=False,
+        min_detection_confidence=0.6,
+        min_tracking_confidence=0.6,
+    ) as pose, open(output_path, "w", newline="", encoding="utf-8") as csv_file:
+        writer = csv.DictWriter(csv_file, fieldnames=fieldnames)
+        writer.writeheader()
 
-            # Zeilen-Dictionary für diesen Frame erstellen
-            frame_row = {"Frame": frame_count}
+        while True:
+            success, frame = cap.read()
+            if not success:
+                break
 
-            # Koordinaten für jedes Gelenk in die Zeile eintragen
-            for idx, name in enumerate(KEYPOINT_NAMES):
-                if idx < len(joints):
-                    # X und Y Koordinaten als Pixelwerte
-                    frame_row[f"{name}_X"] = int(joints[idx][0])
-                    frame_row[f"{name}_Y"] = int(joints[idx][1])
+            frame_count += 1
+            rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+            result = pose.process(rgb_frame)
+            row = {"Frame": frame_count}
 
-                    # Z-Koordinate (YOLO liefert hier den Konfidenzwert der Sichtbarkeit/Tiefe,
-                    # welcher bei kalibrierten 3D-Modellen der relative Z-Abstand ist)
-                    frame_row[f"{name}_Z"] = float(joints[idx][2])
-                else:
-                    # Falls ein Gelenk nicht im Bild ist, wird es mit 0 markiert
-                    frame_row[f"{name}_X"] = 0
-                    frame_row[f"{name}_Y"] = 0
-                    frame_row[f"{name}_Z"] = 0.0
+            if result.pose_world_landmarks:
+                landmarks = result.pose_world_landmarks.landmark
+                for name, landmark_id in LANDMARK_MAP.items():
+                    landmark = landmarks[landmark_id.value]
+                    # MediaPipe world landmarks sind eine relative 3D-Schätzung
+                    # in Metern, bezogen auf die Körpermitte (Hüfte). Sie sind
+                    # keine gemessenen absoluten Weltkoordinaten.
+                    row[f"{name}_X"] = landmark.x
+                    row[f"{name}_Y"] = landmark.y
+                    row[f"{name}_Z"] = landmark.z
+                    row[f"{name}_visibility"] = landmark.visibility
+                written_frames += 1
+            else:
+                for name in LANDMARK_MAP:
+                    row[f"{name}_X"] = ""
+                    row[f"{name}_Y"] = ""
+                    row[f"{name}_Z"] = ""
+                    row[f"{name}_visibility"] = 0.0
 
-            all_frames_data.append(frame_row)
+            writer.writerow(row)
 
-cap.release()
+    cap.release()
+    elapsed = time.time() - start_time
+    print(f"{written_frames}/{frame_count} Frames mit 3D-Pose gespeichert.")
+    print(f"CSV: {output_path} | Video-FPS: {fps:.2f} | Dauer: {elapsed:.2f}s")
 
-# 4. Daten in eine übersichtliche CSV-Struktur bringen und speichern
-if all_frames_data:
-    df = pd.DataFrame(all_frames_data)
-    output_file = "../../generated/roboter_bewegungsdaten_3d.csv"
-    df.to_csv(output_file, index=False)
 
-    elapsed_time = time.time() - start_time
-    print(f"\nErfolgreich beendet!")
-    print(f"{frame_count} Frames in {elapsed_time:.2f} Sekunden auf der CPU verarbeitet.")
-    print(f"Datei gespeichert unter: {output_file}")
-else:
-    print("Es wurden keine Personen oder Bewegungsdaten im Video gefunden.")
+if __name__ == "__main__":
+    main()
