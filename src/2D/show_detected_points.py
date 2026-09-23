@@ -25,25 +25,25 @@ def generate_skeleton_video(csv_path, output_path="skelett_bewegung.mp4", fps=10
     # Wir mappen hier die exakten Namen aus deiner CSV
     connections = [
         # Gesicht
-        ("Nase", "l_Auge"),
-        ("Nase", "r_Auge"),
-        ("l_Auge", "l_Ohr"),
-        ("r_Auge", "r_Ohr"),
+        ("Nase", "L_Auge"),
+        ("Nase", "L_Auge"),
+        ("L_Auge", "L_Ohr"),
+        ("R_Auge", "R_Ohr"),
         # Oberkörper & Arme
-        ("LShoulderRoll", "RShoulderRoll"),
-        ("LShoulderRoll", "LElbowRoll"),
-        ("LElbowRoll", "LWrist"),
-        ("RShoulderRoll", "RElbowRoll"),
-        ("RElbowRoll", "RWrist"),
+        ("L_Shoulder", "R_Shoulder"),
+        ("L_Shoulder", "L_Elbow"),
+        ("L_Elbow", "L_Wrist"),
+        ("R_Shoulder", "R_Elbow"),
+        ("R_Elbow", "R_Wrist"),
         # Torso / Hüfte
-        ("LShoulderRoll", "LHipRoll"),
-        ("RShoulderRoll", "RHipRoll"),
-        ("LHipRoll", "RHipRoll"),
+        ("L_Shoulder", "L_Hip"),
+        ("R_Shoulder", "R_Hip"),
+        ("L_Hip", "R_Hip"),
         # Beine
-        ("LHipRoll", "LKnee"),
-        ("LKnee", "LAnkle"),
-        ("RHipRoll", "RKnee"),
-        ("RKnee", "RAnkle"),
+        ("L_Hip", "L_Knee"),
+        ("L_Knee", "L_Ankle"),
+        ("R_Hip", "R_Knee"),
+        ("R_Knee", "R_Ankle"),
     ]
  
     # 3. Video Writer aufsetzen
@@ -104,4 +104,4 @@ def generate_skeleton_video(csv_path, output_path="skelett_bewegung.mp4", fps=10
  
  
 # Pfad zu deiner CSV-Datei angeben
-generate_skeleton_video("../../generated/roboter_bewegungsdaten.csv", "skelett_bewegung.mp4", fps=15)
+generate_skeleton_video("../../generated/roboter_bewegungsdaten.csv", "../../generated/skelett_bewegung.mp4", fps=15)

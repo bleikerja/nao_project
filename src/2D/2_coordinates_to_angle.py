@@ -1,8 +1,6 @@
 import csv
 import math
 import numpy as np
-from sympy import true
-from sympy.core import facts
 
 coordinate_map = {
     "LShoulderRoll": ["L_Shoulder", "L_Elbow"],
@@ -17,12 +15,12 @@ coordinate_map = {
 
 angles = []
 
-def calculate_angle2(a: tuple[int, int], b: tuple[int, int], negate = true) -> float:
+def calculate_angle2(a: tuple[int, int], b: tuple[int, int], negate = True) -> float:
     a = math.atan2(b[1] - a[1], b[0] - a[0])
     a = a - math.pi / 2
     return normalize_angle((-1 if negate else 1) * a)
 
-def calculate_angle3(a: tuple[int, int], b: tuple[int, int], c: tuple[int, int], negate = true) -> float:
+def calculate_angle3(a: tuple[int, int], b: tuple[int, int], c: tuple[int, int], negate = True) -> float:
     vector_ba = np.array([a[0] - b[0], a[1] - b[1]])
     vector_bc = np.array([c[0] - b[0], c[1] - b[1]])
 
@@ -51,6 +49,6 @@ with open('../../generated/roboter_bewegungsdaten.csv', 'r', encoding='utf-8', n
         angles.append(angles_row)
     with open("../../generated/nao_angles.csv", mode='w', newline='') as new_file:
         writer = csv.DictWriter(new_file, fieldnames=angles[0].keys())
-        writer.writeheader() 
+        writer.writeheader()
         writer.writerows(angles)
- 
+
