@@ -1,97 +1,431 @@
 # -*- coding: utf-8 -*-
-import time
-import numpy as np
+# import csv
+# import time
+# import numpy as np
+# from naoqi import ALProxy
+# import os
+#
+# IP = "127.0.0.1"
+# PORT = 9559
+#
+# motion = ALProxy("ALMotion", IP, PORT)
+# posture = ALProxy("ALRobotPosture", IP, PORT)
+#
+# # 1. NAO aufwecken und stabil hinstellen
+# motion.wakeUp()
+# posture.goToPosture("StandInit", 1.0)
+#
+# # 2. GANZKÖRPER-SCHUTZ & BALANCE AKTIVIEREN
+# motion.setCollisionProtectionEnabled("Arms", True)
+# motion.wbEnable(True)  # Whole Body Control aktivieren
+# # Ganz wichtig: Füße fixieren, damit der Torso die Beine beugen kann
+# #motion.wbEnableBalanceConstraint(True, "Legs")
+#
+# script_dir = os.path.dirname(os.path.abspath(__file__))
+# csv_path = os.path.abspath(os.path.join(script_dir, '..', '..', 'generated', 'roboter_bewegungsdaten_3d.csv'))
+#
+# with open(csv_path, 'r') as file:
+#     raw_data = list(csv.DictReader(file))
+#
+# # Listen für die 3D-Wegpunkte vorbereiten
+# path_r_arm = []
+# path_l_arm = []
+# path_torso = []  # Steuert die Beinbeugung / Hüftbewegung
+# time_list = []
+#
+# current_time = 0.0
+# zeit_pro_frame = 0.05  # 20 FPS
+#
+# #R_DEFAULT_ROT = [1.57, 0.0, 0.0]
+# #L_DEFAULT_ROT = [1.57, 0.0, 0.0]
+#
+# # Daten einlesen, transformieren und skalieren
+# # -*- coding: utf-8 -*-
+# # ... (Anfang deines Skripts bleibt gleich)
+#
+# for i, row in enumerate(raw_data):
+#     current_time += zeit_pro_frame
+#     time_list.append(current_time)
+#
+#     # 1. 3D-Daten der Hände holen
+#     mp_rx, mp_ry, mp_rz = float(row['RWrist_X']), float(row['RWrist_Y']), float(row['RWrist_Z'])
+#     mp_lx, mp_ly, mp_lz = float(row['LWrist_X']), float(row['LWrist_Y']), float(row['LWrist_Z'])
+#
+#     # 2. 3D-Daten der Schultern holen (Wichtig: Wir nehmen die Schultern als festen Bezugspunkt!)
+#     mp_rsx, mp_rsy, mp_rsz = float(row['RShoulderRoll_X']), float(row['RShoulderRoll_Y']), float(row['RShoulderRoll_Z'])
+#     mp_lsx, mp_lsy, mp_lsz = float(row['LShoulderRoll_X']), float(row['LShoulderRoll_Y']), float(row['LShoulderRoll_Z'])
+#
+#     # 3. 3D-Daten der Hüfte für die Beinarbeit (Mittelwert)
+#     mp_hx = (float(row['LHipRoll_X']) + float(row['RHipRoll_X'])) / 2.0
+#     mp_hy = (float(row['LHipRoll_Y']) + float(row['RHipRoll_Y'])) / 2.0
+#     mp_hz = (float(row['LHipRoll_Z']) + float(row['RHipRoll_Z'])) / 2.0
+#
+#     # --- DIREKTE SCHULTER-ZU-HAND-TRANSFORMATION ---
+#     # Wir berechnen, wie weit die Hand von der Schulter entfernt ist.
+#     # Da MediaPipe-Y nach unten zählt, bedeutet ein kleinerer Y-Wert bei der Hand,
+#     # dass die Hand HÖHER als die Schulter ist -> (mp_rsy - mp_ry) wird positiv!
+#
+#     delta_rx = (mp_rsz - mp_rz)  # Tiefe relativ zur Schulter
+#     delta_ry = (mp_rsx - mp_rx)  # Links/Rechts relativ zur Schulter
+#     delta_rz = (mp_rsy - mp_ry)  # Höhe relativ zur Schulter (Positiv = Hand über Schulter)
+#
+#     delta_lx = (mp_lsz - mp_lz)
+#     delta_ly = (mp_lsx - mp_lx)
+#     delta_lz = (mp_lsy - mp_ly)
+#
+#     # RECHTER ARM: Umrechnung auf NAO-Arbeitsraum mit festem, sicherem Brust-Offset
+#     # Der NAO-Arm startet mechanisch an der Schulter (ca. X=0.0, Y=-0.1, Z=0.1)
+#     nao_rx = 0.2 #delta_rx * 0.4 + 0.18  # Stabil 18 cm vor der Brust halten
+#     nao_ry = delta_ry * 0.6 + 0.18  # Seitliche Winkbewegung verstärkt auf Faktor 0.5
+#     nao_rz = delta_rz * 0.7 + 0.20  # Höhenbewegung massiv verstärkt (Faktor 0.6) + Grundhöhe 12 cm
+#
+#     # LINKER ARM: Analog für die linke Seite
+#     nao_lx = 0.2 #delta_lx * 0.4 + 0.18
+#     nao_ly = delta_ly * 0.6 + 0.15
+#     nao_lz = delta_lz * 0.7 + 0.12
+#
+#     # Begrenzung (Clipping), damit der Arm nicht in ungesunde Extrembereiche gerät
+#     # nao_ry = np.clip(nao_ry, -0.28, -0.05)
+#     # nao_ly = np.clip(nao_ly, 0.05, 0.28)
+#     # nao_rz = np.clip(nao_rz, 0.02, 0.35)  # Erlaubt eine Höhe bis zu 35 cm über der Brust
+#     # nao_lz = np.clip(nao_lz, 0.02, 0.35)
+#
+#     # Ergonomische Handgelenks-Rotation (Wy): Verhindert das Sperren der Schulter bei hoher Position
+#     r_wy = np.clip(nao_rz * 1.5, -0.1, 0.8)
+#     l_wy = np.clip(nao_lz * 1.5, -0.1, 0.8)
+#
+#     # TORSO / BEINE: Extrem dämpfen, damit der Fokus rein auf dem Winken liegt
+#     nao_tx = 0.0
+#     nao_ty = 0.0
+#     # Nutzt den ersten Frame als stabile Standhöhe. Geht nur minimal mit (max 2cm Hocke)
+#     nao_tz = -(mp_hy - float(raw_data[0]['RHipRoll_Y'])) * 0.05
+#     nao_tz = np.clip(nao_tz, -0.02, 0.02)
+#
+#     # Format: [X, Y, Z, Wx, Wy, Wz] (Wir nutzen 1.57 rad / 90 Grad Drehung für eine natürliche Handhaltung)
+#     path_r_arm.append([nao_rx, nao_ry, nao_rz, 1.57, 0.0, 0.0])
+#     path_l_arm.append([nao_lx, nao_ly, nao_lz, 1.57, 0.0, 0.0])
+#     path_torso.append([nao_tx, nao_ty, nao_tz, 0.0, 0.0, 0.0])
+#
+# # 3. Bewegung für ARME und BEINE (Torso) synchron starten
+# # FRAME_ROBOT (2) nutzen wir hier, da sich der Torso relativ zu den festen Füßen bewegt
+# effectors = ["RArm", "LArm"]#["RArm", "LArm", "Torso"]
+# frame = 0#2  # FRAME_ROBOT (Stabil für kombinierten Torso-Bein-Einsatz)
+# axis_mask = [7, 7]  # 7 = Nur X, Y, Z steuern (Orientierung bleibt stabil)
+#
+# print("Starte sichere Ganzkörper-Bewegung inkl. Beinarbeit...")
+#
+# # Sendet Arm- und Hüftdaten komplett parallel an den Roboter.
+# # Wenn der Torso nach unten steuert (nao_tz sinkt), geht der NAO automatisch in die Knie.
+# motion.positionInterpolations(
+#     effectors,
+#     frame,
+#     [path_r_arm, path_l_arm],
+#     axis_mask,
+#     [time_list, time_list]
+# )
+#
+# # Nach der Bewegung Whole Body Control wieder ausschalten
+# motion.wbEnable(False)
+# print("Ganzkörper-Bewegung erfolgreich beendet.")
+# -*- coding: utf-8 -*-
+# -*- coding: utf-8 -*-
+# -*- coding: utf-8 -*-
+# import csv
+# import time
+# import numpy as np
+# from naoqi import ALProxy
+# import os
+#
+# IP = "127.0.0.1"
+# PORT = 9559
+#
+# motion = ALProxy("ALMotion", IP, PORT)
+# posture = ALProxy("ALRobotPosture", IP, PORT)
+#
+# # 1. NAO aufwecken und in stabile Standard-Pose bringen
+# motion.wakeUp()
+# posture.goToPosture("StandInit", 1.0)
+#
+# # 2. Universal-Schutz aktivieren und Beinzappeln stoppen
+# motion.setCollisionProtectionEnabled("Arms", True)
+# motion.wbEnable(False)  # Verhindert, dass die Beine sich ungewollt mitbewegen
+#
+# script_dir = os.path.dirname(os.path.abspath(__file__))
+# csv_path = os.path.abspath(os.path.join(script_dir, '..', '..', 'generated', 'roboter_bewegungsdaten_3d.csv'))
+#
+# with open(csv_path, 'r') as file:
+#     raw_data = list(csv.DictReader(file))
+#
+# path_r_arm = []
+# path_l_arm = []
+# time_list = []
+#
+# current_time = 0.0
+# zeit_pro_frame = 0.1  # 20 FPS
+#
+# # --- SCHRITT 1: DYNAMISCHE PROPORTIONAL-SKALIERUNG ---
+# # Wir messen im ersten Frame den Schulterabstand des Menschen.
+# # Das setzen wir ins Verhältnis zu NAOs echtem Schulterabstand (ca. 0.20 Meter).
+# first_row = raw_data[0]
+# mp_shoulder_dist = np.linalg.norm(
+#     np.array([float(first_row['LShoulderRoll_X']), float(first_row['LShoulderRoll_Y'])]) -
+#     np.array([float(first_row['RShoulderRoll_X']), float(first_row['RShoulderRoll_Y'])])
+# )
+# if mp_shoulder_dist == 0:
+#     mp_shoulder_dist = 1.0
+#
+# skalierung = 0.20 / mp_shoulder_dist
+#
+# # --- SCHRITT 2: UNIVERSAL-VEKTOR-BERECHNUNG ---
+# for i, row in enumerate(raw_data):
+#     current_time += zeit_pro_frame
+#     time_list.append(current_time)
+#
+#     # 3D-Koordinaten aus der CSV auslesen
+#     mp_rx, mp_ry, mp_rz = float(row['RWrist_X']), float(row['RWrist_Y']), float(row['RWrist_Z'])
+#     mp_lx, mp_ly, mp_lz = float(row['LWrist_X']), float(row['LWrist_Y']), float(row['LWrist_Z'])
+#
+#     mp_rsx, mp_rsy, mp_rsz = float(row['RShoulderRoll_X']), float(row['RShoulderRoll_Y']), float(row['RShoulderRoll_Z'])
+#     mp_lsx, mp_lsy, mp_lsz = float(row['LShoulderRoll_X']), float(row['LShoulderRoll_Y']), float(row['LShoulderRoll_Z'])
+#
+#     # KORRIGIERTE VEKTOR-MAPPING (MediaPipe 3D -> NAO Torso)
+#     # MediaPipe: X=rechts, Y=unten, Z=Tiefe
+#     # NAO Torso: X=vorne (-mp_z), Y=links (-mp_x), Z=oben (-mp_y)
+#
+#     # Abstand Hand zu Schulter berechnen
+#     dx_r = (mp_rsx - mp_rx)
+#     dy_r = (mp_rsy - mp_ry)
+#     dz_r = (mp_rsz - mp_rz)
+#
+#     dx_l = (mp_lsx - mp_lx)
+#     dy_l = (mp_lsy - mp_ly)
+#     dz_l = (mp_lsz - mp_lz)
+#
+#     # Umrechnung in NAOs physikalisches System unter Berücksichtigung der Achsenrichtungen:
+#     # Vorwärts (X): Orientiert an der Tiefe (Z)
+#     # Seitwärts (Y): Invertiert für die korrekte Rechts-/Links-Spiegelung
+#     # Höhenachse (Z): Invertiert, da MediaPipe-Y nach unten geht
+#     nao_rx = 0.16 + (dz_r * skalierung)  # +0.16m Sicherheits-Offset nach vorne
+#     nao_ry = -0.10 - (dx_r * skalierung)  # Verankert an rechter Schulter (-0.10)
+#     nao_rz = 0.10 + (dy_r * skalierung)  # Verankert an Schulterhöhe (0.10)
+#
+#     nao_lx = 0.16 + (dz_l * skalierung)
+#     nao_ly = 0.10 - (dx_l * skalierung)  # Verankert an linker Schulter (+0.10)
+#     nao_lz = 0.10 + (dy_l * skalierung)
+#
+#     # DYNAMISCHES SCHULTER-AUSPLANELELN (Wy Rotation):
+#     # Je höher der Arm geht, desto mehr drehen wir das Handgelenk mit (in Radiant),
+#     # damit die Schulter mechanisch komplett freigegeben wird.
+#     r_wy = np.clip(nao_rz * 1.5, 0.0, 0.8)
+#     l_wy = np.clip(nao_lz * 1.5, 0.0, 0.8)
+#
+#     # Format: [X, Y, Z, Wx, Wy, Wz]
+#     # Wx = 1.57 stellt die Handfläche ergonomisch aufrecht (wie beim Winken oder Zeigen)
+#     path_r_arm.append([nao_rx, nao_ry, nao_rz, 1.57, r_wy, 0.0])
+#     path_l_arm.append([nao_lx, nao_ly, nao_lz, 1.57, l_wy, 0.0])
+#
+# # 3. Bewegung starten
+# effectors = ["RArm", "LArm"]
+# frame = 0  # FRAME_TORSO
+# axis_mask = [63, 63]  # 63 = Nutzt Position UND Rotation. Zwingt den Arm, sich flüssig auszudrehen.
+#
+# print("Starte universelle, proportionale 3D-Bewegung...")
+#
+# motion.positionInterpolations(
+#     effectors,
+#     frame,
+#     [path_r_arm, path_l_arm],
+#     axis_mask,
+#     [time_list, time_list]
+# )
+#
+# print("Bewegung erfolgreich beendet.")
+import csv
+import os
 from naoqi import ALProxy
 
-# Deine Rohdaten (gekürzt für das Skript, Zeile 6 vervollständigt)
-raw_data = [
-    [1, -0.032197, -0.642612, -0.344683, 0.999792, -0.004873, -0.659776, -0.318384, 0.999477, -0.031072, -0.668587,
-     -0.352273, 0.999677, 0.073113, -0.640459, -0.224719, 0.999793, -0.074680, -0.603661, -0.209585, 0.999430, 0.165418,
-     -0.456877, -0.110116, 0.999968, -0.146251, -0.517256, -0.034268, 0.999899, 0.202776, -0.239183, -0.076584,
-     0.998349, -0.141510, -0.204259, -0.047484, 0.990249, 0.186690, -0.003589, -0.062994, 0.997897, -0.161586, 0.007689,
-     -0.125209, 0.994314, 0.095503, 0.003359, 0.017810, 0.999717, -0.093541, -0.007263, -0.016298, 0.999671, 0.090997,
-     0.415478, -0.018251, 0.951697, -0.043671, 0.329242, 0.020019, 0.910588, 0.100482, 0.747230, 0.176382, 0.760188,
-     -0.061834, 0.708176, 0.195853, 0.778652],
-    [2, -0.034425, -0.641442, -0.347748, 0.999776, -0.007230, -0.659013, -0.323075, 0.999432, -0.033369, -0.667926,
-     -0.356495, 0.999657, 0.070905, -0.640063, -0.232213, 0.999766, -0.077815, -0.603729, -0.215375, 0.999388, 0.164816,
-     -0.457191, -0.115808, 0.999964, -0.146446, -0.517764, -0.041511, 0.999894, 0.201527, -0.239798, -0.088782,
-     0.998224, -0.153652, -0.204543, -0.052046, 0.990043, 0.182532, -0.004373, -0.072805, 0.997573, -0.174776, 0.007375,
-     -0.126479, 0.994091, 0.095215, 0.003348, 0.017607, 0.999712, -0.093207, -0.007223, -0.016092, 0.999669, 0.092517,
-     0.412326, -0.010241, 0.951991, -0.042519, 0.327152, 0.032760, 0.910230, 0.100639, 0.739709, 0.186168, 0.765466,
-     -0.061574, 0.704955, 0.211647, 0.783491],
-    [3, -0.035488, -0.641305, -0.348779, 0.999771, -0.008123, -0.658979, -0.324660, 0.999423, -0.034260, -0.667920,
-     -0.357766, 0.999653, 0.070462, -0.640030, -0.234695, 0.999759, -0.078580, -0.604292, -0.216770, 0.999371, 0.164562,
-     -0.457368, -0.118603, 0.999963, -0.146486, -0.518512, -0.042472, 0.999888, 0.200385, -0.240050, -0.092745,
-     0.998213, -0.157348, -0.204756, -0.052222, 0.989843, 0.181632, -0.005508, -0.075412, 0.997519, -0.178641, 0.007269,
-     -0.126494, 0.993852, 0.095059, 0.003313, 0.017387, 0.999712, -0.093013, -0.007142, -0.015865, 0.999669, 0.094399,
-     0.409462, -0.002963, 0.953319, -0.040497, 0.325490, 0.037768, 0.912241, 0.101011, 0.732628, 0.199391, 0.773110,
-     -0.058326, 0.701276, 0.221085, 0.790580],
-    [4, -0.035526, -0.640593, -0.348795, 0.999757, -0.008197, -0.658480, -0.324609, 0.999383, -0.034414, -0.667441,
-     -0.357732, 0.999632, 0.070372, -0.639821, -0.234411, 0.999736, -0.079473, -0.604295, -0.216649, 0.999329, 0.164619,
-     -0.457382, -0.118179, 0.999960, -0.146548, -0.518689, -0.043795, 0.999884, 0.200373, -0.240013, -0.091958,
-     0.998122, -0.158964, -0.204763, -0.055497, 0.989828, 0.181544, -0.006251, -0.075054, 0.997356, -0.179385, 0.007265,
-     -0.130211, 0.993788, 0.095029, 0.003301, 0.017483, 0.999713, -0.092972, -0.007099, -0.015939, 0.999672, 0.096439,
-     0.408545, 0.000007, 0.954124, -0.040145, 0.325319, 0.038423, 0.913586, 0.102972, 0.730719, 0.201958, 0.779910,
-     -0.058356, 0.699688, 0.224962, 0.796540],
-    [5, -0.036133, -0.639098, -0.349724, 0.999752, -0.008689, -0.657283, -0.325793, 0.999366, -0.034948, -0.666337,
-     -0.358686, 0.999626, 0.070303, -0.638932, -0.235353, 0.999723, -0.079797, -0.604223, -0.217148, 0.999307, 0.164621,
-     -0.457033, -0.118000, 0.999958, -0.146551, -0.518947, -0.044313, 0.999882, 0.200377, -0.239140, -0.091713,
-     0.998105, -0.161096, -0.204864, -0.055420, 0.989930, 0.181693, -0.006212, -0.072849, 0.997298, -0.181189, 0.007635,
-     -0.130273, 0.993750, 0.095014, 0.003291, 0.017800, 0.999713, -0.092952, -0.007070, -0.016240, 0.999675, 0.098837,
-     0.408585, 0.000315, 0.954460, -0.039776, 0.325306, 0.037298, 0.915377, 0.104234, 0.730738, 0.201756, 0.781988,
-     -0.058157, 0.699649, 0.223838, 0.800429],
-    [6, -0.038001, -0.639049, -0.349511, 0.999752, -0.010661, -0.657274, -0.325747, 0.999367, -0.036901, -0.666319,
-     -0.358524, 0.999629, 0.068913, -0.638928, -0.235202, 0.999719, -0.081160, -0.604291, -0.216966, 0.999305, 0.164373,
-     -0.457066, -0.117857, 0.999956, -0.146716, -0.519166, -0.044085, 0.999881, 0.200299, -0.239221, -0.091121,
-     0.998097, -0.162046, -0.204984, -0.054206, 0.989908, 0.181725, -0.006596, -0.072722, 0.997234, -0.181481, 0.007529,
-     -0.129143, 0.993661, 0.094916, 0.003275, 0.017729, 0.999709, -0.092843, -0.007043, -0.016174, 0.999673, 0.098970,
-     0.408397, 0.000168, 0.954142, -0.038473, 0.324893, 0.036647, 0.914993, 0.105265, 0.730862, 0.200592, 0.782280,
-     -0.055831, 0.699729, 0.222402, 0.795000]
+# ============================================================
+# NAO VERBINDUNG
+# ============================================================
+
+IP = "127.0.0.1"
+PORT = 9559
+
+motion = ALProxy(
+    "ALMotion",
+    IP,
+    PORT
+)
+
+posture = ALProxy(
+    "ALRobotPosture",
+    IP,
+    PORT
+)
+
+# ============================================================
+# DATEIPFAD
+# ============================================================
+
+script_dir = os.path.dirname(os.path.abspath(__file__))
+
+input_csv = os.path.abspath(
+    os.path.join(
+        script_dir,
+        '..',
+        '..',
+        'generated',
+        'nao_arm_paths.csv'
+    )
+)
+
+# ============================================================
+# SICHERHEITSABFRAGE
+# ============================================================
+
+print("")
+print("==========================================")
+print("NAO BEWEGUNG")
+print("==========================================")
+print("Zu verwendende Trajektorie:")
+print(input_csv)
+print("")
+
+antwort = raw_input(
+    "Soll die Bewegung wirklich gestartet werden? [ja/nein]: "
+)
+
+if antwort.lower() != "ja":
+    print("Bewegung abgebrochen.")
+    exit()
+
+# ============================================================
+# CSV EINLESEN
+# ============================================================
+
+with open(input_csv, 'r') as file:
+    data = list(csv.DictReader(file))
+
+if len(data) == 0:
+    raise RuntimeError(
+        "Die Trajektorien-CSV enthält keine Daten."
+    )
+
+# ============================================================
+# TRAJEKTORIEN AUS CSV LADEN
+# ============================================================
+
+path_r_arm = []
+path_l_arm = []
+time_list = []
+
+for row in data:
+    time_list.append(
+        float(row['time'])
+    )
+
+    # --------------------------------------------------------
+    # Rechter Arm
+    # --------------------------------------------------------
+
+    path_r_arm.append([
+        float(row['R_X']),
+        float(row['R_Y']),
+        float(row['R_Z']),
+        float(row['R_WX']),
+        float(row['R_WY']),
+        float(row['R_WZ'])
+    ])
+
+    # --------------------------------------------------------
+    # Linker Arm
+    # --------------------------------------------------------
+
+    path_l_arm.append([
+        float(row['L_X']),
+        float(row['L_Y']),
+        float(row['L_Z']),
+        float(row['L_WX']),
+        float(row['L_WY']),
+        float(row['L_WZ'])
+    ])
+
+# ============================================================
+# NAO VORBEREITEN
+# ============================================================
+
+print("")
+print("Wecke NAO auf...")
+
+motion.wakeUp()
+
+print("Gehe in StandInit...")
+
+posture.goToPosture(
+    "StandInit",
+    1.0
+)
+
+# ============================================================
+# SICHERHEIT
+# ============================================================
+
+print("Aktiviere Armschutz...")
+
+motion.setCollisionProtectionEnabled(
+    "Arms",
+    True
+)
+
+# Whole Body Motion deaktivieren,
+# damit die Beine nicht ungewollt mitbewegt werden.
+motion.wbEnable(False)
+
+# ============================================================
+# BEWEGUNG
+# ============================================================
+
+effectors = [
+    "RArm",
+    "LArm"
 ]
 
-# Proxies zum NAO initialisieren
-motion = ALProxy("ALMotion", "127.0.0.1", 63984)
-effector = "RArm"  # Rechter Arm gesteuert über das Handgelenk
-frame = 0  # FRAME_TORSO (Relativ zur Brust des NAO)
+# FRAME_TORSO
+frame = 0
 
-# Extrahiere die transformierten Koordinaten für das rechte Handgelenk (RWrist)
-punkte_nao = []
-for zeile in raw_data:
-    # RWrist_X, RWrist_Y, RWrist_Z befinden sich bei Index 41, 42, 43
-    mp_x = zeile[41]
-    mp_y = zeile[42]
-    mp_z = zeile[43]
+# 63 = Position + Orientierung
+axis_mask = [
+    7,
+    7
+]
 
-    # Transformation von MediaPipe in das NAO-Koordinatensystem
-    nao_x = -mp_z
-    nao_y = -mp_x
-    nao_z = -mp_y
+print("")
+print("==========================================")
+print("STARTE BEWEGUNG")
+print("==========================================")
+print("Frames:", len(time_list))
+print("Dauer:", time_list[-1], "Sekunden")
+print("")
 
-    # Skalierungsfaktor: Da sich deine Handgelenkswerte im Bereich von
-    # ca. 0.1 bis 0.2 Metern bewegen, passt das perfekt in NAOs Reichweite.
-    punkte_nao.append([nao_x, nao_y, nao_z])
+motion.positionInterpolations(
+    effectors,
+    frame,
+    [
+        path_r_arm,
+        path_l_arm
+    ],
+    axis_mask,
+    [
+        time_list,
+        time_list
+    ]
+)
 
-# Bewegungsschleife: Folgt den Richtungsvektoren von Frame zu Frame
-# Wir haben 6 Frames, das ergibt 5 Richtungsvektoren.
-for i in range(len(punkte_nao) - 1):
-    start = np.array(punkte_nao[i])
-    ziel = np.array(punkte_nao[i + 1])
+# ============================================================
+# ENDE
+# ============================================================
 
-    # Richtungsvektor berechnen (Ziel minus Start)
-    vektor = ziel - start
-
-    # Erstelle die SE3-Transformationsmatrix für relative Bewegungen
-    transform = [1.0, 0.0, 0.0, vektor[0],
-                 0.0, 1.0, 0.0, vektor[1],
-                 0.0, 0.0, 1.0, vektor[2],
-                 0.0, 0.0, 0.0, 1.0]
-
-    # Da deine Daten von Frame zu Frame springen:
-    # Bei 20 Bildern pro Sekunde (fps) dauert 1 Frame exakt 0.05 Sekunden.
-    zeit_pro_frame = 0.05
-
-    # Bewegung ausführen (0.1 steuert die Dynamik/Flüssigkeit)
-    motion.changeTransform(effector, frame, transform, 0.1, 63)
-
-    # Warten, bis der nächste Vektor an der Reihe ist
-    time.sleep(zeit_pro_frame)
+print("")
+print("==========================================")
+print("BEWEGUNG ERFOLGREICH BEENDET")
+print("==========================================")

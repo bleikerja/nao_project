@@ -19,7 +19,7 @@ Ausführung auf Python 3:
 
 ```bash
 cd src/3D
-python 2_coordinates_to_angle_3d.py
+python 2_coordinates_to_motion_graph.py
 ```
 
 Ausführung mit Python 2.7/NAOqi:

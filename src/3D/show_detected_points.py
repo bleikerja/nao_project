@@ -4,8 +4,8 @@ from pathlib import Path
 import cv2
 import numpy as np
 
-INPUT_FILE = "../../generated/roboter_bewegungsdaten_1_3d.csv"
-OUTPUT_FILE = "../../generated/skelett_1_3d.csv.mp4"
+INPUT_FILE = "../../generated/roboter_bewegungsdaten_3d.csv"
+OUTPUT_FILE = "../../generated/skelett_test_3d.csv.mp4"
 FPS = 15
 WIDTH = 1280
 HEIGHT = 720

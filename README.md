@@ -2,7 +2,7 @@
 
 1. `nao-video-record.py` nimmt ein Video mit der NAO-Kamera auf.
 2. `src/3D/1_detect_points_3d.py` erkennt die Person und schreibt relative 3D-Landmarks.
-3. `src/3D/2_coordinates_to_angle_3d.py` berechnet Winkel aus den 3D-Punkten.
+3. `src/3D/2_coordinates_to_motion_graph.py` berechnet Winkel aus den 3D-Punkten.
 4. Die Winkel werden anschließend auf die NAO-Gelenke retargetiert.
 
 ### 3D-Hinweis
@@ -21,7 +21,7 @@ Ausführung aus `src/3D`:
 
 ```bash
 python 1_detect_points_3d.py
-python 2_coordinates_to_angle_3d.py
+python 2_coordinates_to_motion_graph.py
 ```
 
 Die Verarbeitung sollte auf einem PC erfolgen. Der NAO liefert das Video und erhält danach die retargetierten Winkel. Vor der Ausführung am Roboter müssen zusätzlich Kamera-/Körperkoordinatensystem, Gelenkgrenzen, Spiegelung und Glättung kalibriert werden.
