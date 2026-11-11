@@ -4,15 +4,23 @@ from naoqi import ALProxy  # Benötigt die NAOqi SDK (Python 2.7 Umgebung)
 import csv
 import time
 
+
+def set_angle_in_limits(angle_name, angle):
+    limits = motion_proxy.getLimits(angle_name)
+    return min(max(angle,limits[0][0]), limits[0][1])
+
 # --- Senden an den Choregraphe-Simulator ---
 IP = "127.0.0.1"  # Localhost für den Simulator
 PORT = 63984      # Standardport des virtuellen Roboters in Choregraphe
 
 motion_proxy = ALProxy("ALMotion", IP, PORT)
 bg_movement = ALProxy("ALBackgroundMovement", IP, PORT)
+posture = ALProxy("ALRobotPosture", IP, PORT)
 
-# 1. Hintergrundbewegungen ausschalten (verhindert das Zurückzucken)
+# 1. Hintergrundbewegungen ausschalten
 bg_movement.setEnabled(False)
+posture.goToPosture("StandInit", 1.0)
+motion_proxy.setCollisionProtectionEnabled("Arms", True)
 
 with open('../../generated/nao_angles.csv', 'r') as file:
     angles_list = list(csv.DictReader(file))
@@ -45,9 +53,11 @@ with open('../../generated/nao_angles.csv', 'r') as file:
         if abs(float(row["LHipRoll"])) < 0.2:
             row["LHipRoll"] = 0
 
-        # Gelenke im Simulator bewegen
-        # Namen, Zielwinkel (Radiant), Zeitdauer (Sekunden), Absolut?
-        motion_proxy.setAngles(row.keys(), [float(j) for j in row.values()], 1)
+        for key in row.keys():
+            row[key] = set_angle_in_limits(key, float(row[key]))
+
+        # Gelenke bewegen
+        motion_proxy.setAngles(row.keys(), row.values(), 1)
         time.sleep(0.1)
         print("frame " + str(i) + " transferred successfully!")
 

@@ -31,24 +31,25 @@ def calculate_angle3(a: tuple[int, int], b: tuple[int, int], c: tuple[int, int],
 def normalize_angle(a):
     return (a + math.pi) % (2 * math.pi) - math.pi
 
-with open('../../generated/roboter_bewegungsdaten.csv', 'r', encoding='utf-8', newline='') as file:
-    reader = csv.DictReader(file)
-    for row in reader:
-        angles_row = {}
-        for key in coordinate_map.keys():
-            points = []
-            for point in coordinate_map[key]:
-                points.append((int(row[f"{point}_X"]),int(row[f"{point}_Y"])))
+def coordinates_to_angle():
+    with open('../../generated/roboter_bewegungsdaten.csv', 'r', encoding='utf-8', newline='') as file:
+        reader = csv.DictReader(file)
+        for row in reader:
+            angles_row = {}
+            for key in coordinate_map.keys():
+                points = []
+                for point in coordinate_map[key]:
+                    points.append((int(row[f"{point}_X"]),int(row[f"{point}_Y"])))
 
-            if len(points) == 2:
-                angle = calculate_angle2(*points)
-            else:
-                angle = calculate_angle3(*points, negate=key.startswith("L"))
+                if len(points) == 2:
+                    angle = calculate_angle2(*points)
+                else:
+                    angle = calculate_angle3(*points, negate=key.startswith("L"))
 
-            angles_row[key] = angle
-        angles.append(angles_row)
-    with open("../../generated/nao_angles.csv", mode='w', newline='') as new_file:
-        writer = csv.DictWriter(new_file, fieldnames=angles[0].keys())
-        writer.writeheader()
-        writer.writerows(angles)
-
+                angles_row[key] = angle
+            angles.append(angles_row)
+        with open("../../generated/nao_angles.csv", mode='w', newline='') as new_file:
+            writer = csv.DictWriter(new_file, fieldnames=angles[0].keys())
+            writer.writeheader()
+            writer.writerows(angles)
+    print("converted coordinates to angles")
