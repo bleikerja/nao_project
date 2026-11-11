@@ -1,642 +1,341 @@
+# -*- coding: utf-8 -*-
+"""Konvertiert MediaPipe-3D-Koordinaten in sichere NAO-Handtrajektorien."""
+
 import csv
-import numpy as np
 import os
+
+import numpy as np
+
 
 # ============================================================
 # DATEIPFADE
 # ============================================================
 
-script_dir = os.path.dirname(os.path.abspath(__file__))
+SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 
-input_csv = os.path.abspath(
+INPUT_CSV = os.path.abspath(
     os.path.join(
-        script_dir,
-        '..',
-        '..',
-        'generated',
+        SCRIPT_DIR, '..', '..', 'generated',
         'roboter_bewegungsdaten_3d.csv'
     )
 )
 
-output_csv = os.path.abspath(
+OUTPUT_CSV = os.path.abspath(
     os.path.join(
-        script_dir,
-        '..',
-        '..',
-        'generated',
+        SCRIPT_DIR, '..', '..', 'generated',
         'nao_arm_paths.csv'
     )
 )
+
 
 # ============================================================
 # PARAMETER
 # ============================================================
 
-# 0.1 Sekunden pro Frame = 10 FPS
-# Für echte 20 FPS wäre hier 0.05 einzutragen.
-zeit_pro_frame = 0.1
-
-# NAO Schulterabstand
 NAO_SCHULTERABSTAND = 0.20
-
-# ------------------------------------------------------------
-# Glättung der MediaPipe-Daten
-#
-# 0.0 = keine neue Messung übernehmen
-# 1.0 = keine Glättung
-#
-# Ein Wert von ca. 0.3 - 0.4 ist ein guter Anfang.
-# ------------------------------------------------------------
-
 SMOOTHING_ALPHA = 0.35
+CALIBRATION_FRAMES = 30
+MIN_VISIBILITY = 0.50
+
+# Konservative kartesische Arbeitsbereiche relativ zu FRAME_TORSO.
+RIGHT_LIMITS = {
+    'x': (0.08, 0.30),
+    'y': (-0.30, 0.05),
+    'z': (-0.05, 0.35),
+}
+
+LEFT_LIMITS = {
+    'x': (0.08, 0.30),
+    'y': (-0.05, 0.30),
+    'z': (-0.05, 0.35),
+}
+
+REQUIRED_POINTS = [
+    'LShoulderRoll', 'RShoulderRoll',
+    'LHipRoll', 'RHipRoll',
+    'LWrist', 'RWrist',
+]
+
 
 # ============================================================
 # HILFSFUNKTIONEN
 # ============================================================
 
-def punkt(row, prefix):
-    """
-    Liest einen 3D-Punkt aus der CSV.
-    """
+def float_or_nan(value):
+    try:
+        if value is None or str(value).strip() == '':
+            return np.nan
+        return float(value)
+    except (TypeError, ValueError):
+        return np.nan
+
+
+def point_from_row(row, prefix):
+    """Liest einen 3D-Punkt; fehlende Werte werden zu NaN."""
     return np.array([
-        float(row[prefix + '_X']),
-        float(row[prefix + '_Y']),
-        float(row[prefix + '_Z'])
-    ])
+        float_or_nan(row.get(prefix + '_X')),
+        float_or_nan(row.get(prefix + '_Y')),
+        float_or_nan(row.get(prefix + '_Z')),
+    ], dtype=float)
 
 
-def normiere(v):
-    """
-    Normalisiert einen Vektor.
-    """
-    laenge = np.linalg.norm(v)
+def visibility_from_row(row, prefix):
+    return float_or_nan(row.get(prefix + '_visibility'))
 
-    if laenge < 1e-8:
-        return np.zeros(3)
 
-    return v / laenge
+def normalize(vector, fallback=None):
+    length = np.linalg.norm(vector)
+    if not np.isfinite(length) or length < 1e-8:
+        if fallback is None:
+            return np.zeros(3, dtype=float)
+        return np.asarray(fallback, dtype=float)
+    return vector / length
+
+
+def interpolate_points(points):
+    """Interpoliert fehlende Werte je Koordinatenachse linear."""
+    points = np.asarray(points, dtype=float).copy()
+    indices = np.arange(len(points))
+
+    for axis in range(3):
+        values = points[:, axis]
+        valid = np.isfinite(values)
+
+        if not np.any(valid):
+            raise RuntimeError(
+                "Eine komplette Koordinatenachse enthaelt keine gueltigen Werte."
+            )
+
+        points[:, axis] = np.interp(
+            indices,
+            indices[valid],
+            values[valid]
+        )
+
+    return points
 
 
 def smooth_points(points, alpha):
-    """
-    Einfache exponentielle Glättung einer Punktfolge.
-    """
+    """Exponentielle Glaettung einer Punktfolge."""
     if len(points) == 0:
         return points
 
-    result = np.zeros_like(points)
-
+    result = np.zeros_like(points, dtype=float)
     result[0] = points[0]
 
-    for i in range(1, len(points)):
-        result[i] = (
-            alpha * points[i]
-            +
-            (1.0 - alpha) * result[i - 1]
+    for index in range(1, len(points)):
+        result[index] = (
+            alpha * points[index]
+            + (1.0 - alpha) * result[index - 1]
         )
 
     return result
 
 
-# ============================================================
-# CSV EINLESEN
-# ============================================================
+def clip_point(point, limits):
+    return np.array([
+        np.clip(point[0], *limits['x']),
+        np.clip(point[1], *limits['y']),
+        np.clip(point[2], *limits['z']),
+    ], dtype=float)
 
-print("Lese Eingabedatei:")
-print(input_csv)
 
-with open(input_csv, 'r') as file:
-    raw_data = list(csv.DictReader(file))
-
-if len(raw_data) == 0:
-    raise RuntimeError("Die Eingabe-CSV enthält keine Daten.")
-
-print("Anzahl Frames:", len(raw_data))
-
-# ============================================================
-# SCHRITT 1:
-# MEDIAPIPE-PUNKTE AUS CSV AUSLESEN
-# ============================================================
-
-left_shoulder = []
-right_shoulder = []
-
-left_hip = []
-right_hip = []
-
-left_wrist = []
-right_wrist = []
-
-for row in raw_data:
-
-    left_shoulder.append(
-        punkt(row, 'LShoulderRoll')
+def prepare_timestamps(rows):
+    """Uebernimmt echte Videozeit und macht den ersten Wert positiv."""
+    raw_times = np.array(
+        [float_or_nan(row.get('time')) for row in rows],
+        dtype=float
     )
 
-    right_shoulder.append(
-        punkt(row, 'RShoulderRoll')
-    )
+    if not np.all(np.isfinite(raw_times)):
+        raise RuntimeError(
+            "Die Eingabe-CSV enthaelt fehlende oder ungueltige Zeitwerte."
+        )
 
-    left_hip.append(
-        punkt(row, 'LHipRoll')
-    )
+    if len(raw_times) > 1:
+        differences = np.diff(raw_times)
+        positive_differences = differences[differences > 0]
+        if len(positive_differences) == 0:
+            raise RuntimeError("Die Zeitwerte sind nicht aufsteigend.")
+        frame_duration = float(np.median(positive_differences))
+    else:
+        frame_duration = 0.1
 
-    right_hip.append(
-        punkt(row, 'RHipRoll')
-    )
+    times = raw_times - raw_times[0] + frame_duration
 
-    left_wrist.append(
-        punkt(row, 'LWrist')
-    )
+    if np.any(np.diff(times) <= 0):
+        raise RuntimeError("Die Zeitwerte muessen streng aufsteigend sein.")
 
-    right_wrist.append(
-        punkt(row, 'RWrist')
-    )
+    return times
 
-
-left_shoulder = np.array(left_shoulder)
-right_shoulder = np.array(right_shoulder)
-
-left_hip = np.array(left_hip)
-right_hip = np.array(right_hip)
-
-left_wrist = np.array(left_wrist)
-right_wrist = np.array(right_wrist)
 
 # ============================================================
-# SCHRITT 2:
-# MEDIAPIPE-DATEN GLÄTTEN
+# HAUPTPROGRAMM
 # ============================================================
 
-left_shoulder = smooth_points(
-    left_shoulder,
-    SMOOTHING_ALPHA
-)
+def main():
+    print("Lese Eingabedatei:")
+    print(INPUT_CSV)
 
-right_shoulder = smooth_points(
-    right_shoulder,
-    SMOOTHING_ALPHA
-)
+    if not os.path.isfile(INPUT_CSV):
+        raise RuntimeError("Eingabedatei nicht gefunden: " + INPUT_CSV)
 
-left_hip = smooth_points(
-    left_hip,
-    SMOOTHING_ALPHA
-)
+    with open(INPUT_CSV, 'r', newline='', encoding='utf-8') as csv_file:
+        rows = list(csv.DictReader(csv_file))
 
-right_hip = smooth_points(
-    right_hip,
-    SMOOTHING_ALPHA
-)
+    if not rows:
+        raise RuntimeError("Die Eingabe-CSV enthaelt keine Daten.")
 
-left_wrist = smooth_points(
-    left_wrist,
-    SMOOTHING_ALPHA
-)
+    print("Anzahl Frames:", len(rows))
+    times = prepare_timestamps(rows)
 
-right_wrist = smooth_points(
-    right_wrist,
-    SMOOTHING_ALPHA
-)
+    point_series = {}
+    for point_name in REQUIRED_POINTS:
+        series = []
+        for row in rows:
+            point = point_from_row(row, point_name)
+            visibility = visibility_from_row(row, point_name)
 
-# ============================================================
-# SCHRITT 3:
-# DYNAMISCHE PROPORTIONAL-SKALIERUNG
-#
-# Jetzt wird der vollständige 3D-Schulterabstand verwendet.
-# ============================================================
+            # Unsichere Landmark-Messungen ebenfalls interpolieren.
+            if not np.isfinite(visibility) or visibility < MIN_VISIBILITY:
+                point[:] = np.nan
 
-first_left_shoulder = left_shoulder[0]
-first_right_shoulder = right_shoulder[0]
+            series.append(point)
 
-mp_shoulder_dist = np.linalg.norm(
-    first_left_shoulder
-    -
-    first_right_shoulder
-)
+        series = interpolate_points(np.array(series, dtype=float))
+        point_series[point_name] = smooth_points(series, SMOOTHING_ALPHA)
 
-if mp_shoulder_dist < 1e-8:
-    print("WARNUNG: Schulterabstand ist 0.")
-    mp_shoulder_dist = 1.0
+    left_shoulder = point_series['LShoulderRoll']
+    right_shoulder = point_series['RShoulderRoll']
+    left_hip = point_series['LHipRoll']
+    right_hip = point_series['RHipRoll']
+    left_wrist = point_series['LWrist']
+    right_wrist = point_series['RWrist']
 
-skalierung = (
-    NAO_SCHULTERABSTAND
-    /
-    mp_shoulder_dist
-)
-
-print("MediaPipe Schulterabstand 3D:",
-      mp_shoulder_dist)
-
-print("NAO Schulterabstand:",
-      NAO_SCHULTERABSTAND)
-
-print("Verwendete Skalierung:",
-      skalierung)
-
-# ============================================================
-# SCHRITT 4:
-# TRAJEKTORIEN VORBEREITEN
-# ============================================================
-
-path_r_arm = []
-path_l_arm = []
-time_list = []
-
-current_time = 0.0
-
-# ============================================================
-# SCHRITT 5:
-# TORUS-KOORDINATENSYSTEM + ARMVEKTOREN
-# ============================================================
-
-for i in range(len(raw_data)):
-
-    current_time += zeit_pro_frame
-
-    time_list.append(current_time)
-
-    # --------------------------------------------------------
-    # Aktuelle Körperpunkte
-    # --------------------------------------------------------
-
-    LShoulder = left_shoulder[i]
-    RShoulder = right_shoulder[i]
-
-    LHip = left_hip[i]
-    RHip = right_hip[i]
-
-    LWrist = left_wrist[i]
-    RWrist = right_wrist[i]
-
-    # ========================================================
-    # SCHRITT 5.1:
-    # SCHULTER- UND HÜFTMITTELPUNKT
-    # ========================================================
-
-    shoulder_center = (
-        LShoulder
-        +
-        RShoulder
-    ) / 2.0
-
-    hip_center = (
-        LHip
-        +
-        RHip
-    ) / 2.0
-
-    # ========================================================
-    # SCHRITT 5.2:
-    # MENSCHLICHE AUFWÄRTS-ACHSE
-    #
-    # MediaPipe:
-    # Y zeigt nach unten.
-    #
-    # Deshalb wird die Achse vom Hüftzentrum
-    # zum Schulterzentrum verwendet und anschließend
-    # für NAO-Z als "oben" interpretiert.
-    # ========================================================
-
-    up_axis = (
-        shoulder_center
-        -
-        hip_center
+    calibration_count = min(CALIBRATION_FRAMES, len(rows))
+    shoulder_distances = np.linalg.norm(
+        left_shoulder[:calibration_count]
+        - right_shoulder[:calibration_count],
+        axis=1
     )
+    shoulder_distances = shoulder_distances[
+        np.isfinite(shoulder_distances) & (shoulder_distances > 1e-6)
+    ]
 
-    up_axis = normiere(up_axis)
+    if len(shoulder_distances) == 0:
+        raise RuntimeError("Kein gueltiger Schulterabstand bestimmbar.")
 
-    # ========================================================
-    # SCHRITT 5.3:
-    # MENSCHLICHE LINKS/RECHTS-ACHSE
-    #
-    # Von rechter Schulter zu linker Schulter.
-    #
-    # Dadurch zeigt die Achse in Richtung
-    # menschlich links.
-    # ========================================================
+    mp_shoulder_distance = float(np.median(shoulder_distances))
+    scale = NAO_SCHULTERABSTAND / mp_shoulder_distance
 
-    left_axis = (
-        LShoulder
-        -
-        RShoulder
-    )
+    print("MediaPipe-Schulterabstand (Median):", mp_shoulder_distance)
+    print("NAO-Schulterabstand:", NAO_SCHULTERABSTAND)
+    print("Skalierung:", scale)
 
-    left_axis = normiere(left_axis)
+    right_path = []
+    left_path = []
 
-    # ========================================================
-    # SCHRITT 5.4:
-    # VORWÄRTS-ACHSE DES MENSCHEN
-    #
-    # Kreuzprodukt aus Seitenachse und Aufwärtsachse.
-    #
-    # Damit erhalten wir eine Achse, die ungefähr
-    # nach vorne zeigt.
-    # ========================================================
+    previous_up = np.array([0.0, -1.0, 0.0])
+    previous_left = np.array([1.0, 0.0, 0.0])
+    previous_forward = np.array([0.0, 0.0, -1.0])
+    mediapipe_forward_reference = np.array([0.0, 0.0, -1.0])
 
-    forward_axis = np.cross(
-        left_axis,
-        up_axis
-    )
+    for index in range(len(rows)):
+        l_shoulder = left_shoulder[index]
+        r_shoulder = right_shoulder[index]
+        l_hip = left_hip[index]
+        r_hip = right_hip[index]
 
-    forward_axis = normiere(forward_axis)
+        shoulder_center = (l_shoulder + r_shoulder) / 2.0
+        hip_center = (l_hip + r_hip) / 2.0
 
-    # --------------------------------------------------------
-    # Orthogonalisierung
-    #
-    # MediaPipe-Punkte sind nicht mathematisch perfekt
-    # orthogonal. Deshalb wird die Linksachse nochmals
-    # aus den beiden anderen Achsen berechnet.
-    # --------------------------------------------------------
+        up_axis = normalize(
+            shoulder_center - hip_center,
+            fallback=previous_up
+        )
+        left_axis = normalize(
+            l_shoulder - r_shoulder,
+            fallback=previous_left
+        )
+        forward_axis = normalize(
+            np.cross(left_axis, up_axis),
+            fallback=previous_forward
+        )
 
-    left_axis = np.cross(
-        up_axis,
-        forward_axis
-    )
+        # Einheitliche Vorwaertsrichtung erzwingen.
+        if np.dot(forward_axis, mediapipe_forward_reference) < 0:
+            forward_axis = -forward_axis
 
-    left_axis = normiere(left_axis)
+        left_axis = normalize(
+            np.cross(up_axis, forward_axis),
+            fallback=previous_left
+        )
 
-    # ========================================================
-    # SCHRITT 5.5:
-    # ARMVEKTOR SCHULTER -> HAND
-    # ========================================================
+        previous_up = up_axis
+        previous_left = left_axis
+        previous_forward = forward_axis
 
-    # --------------------------------------------------------
-    # Rechter Arm
-    # --------------------------------------------------------
+        right_arm = right_wrist[index] - r_shoulder
+        left_arm = left_wrist[index] - l_shoulder
 
-    arm_r = (
-        RWrist
-        -
-        RShoulder
-    )
-
-    # --------------------------------------------------------
-    # Linker Arm
-    # --------------------------------------------------------
-
-    arm_l = (
-        LWrist
-        -
-        LShoulder
-    )
-
-    # ========================================================
-    # SCHRITT 5.6:
-    # MENSCHLICHER ARMVEKTOR
-    # -> LOKALES TORSO-KOORDINATENSYSTEM
-    #
-    # Lokales menschliches System:
-    #
-    # X = vorne
-    # Y = links
-    # Z = oben
-    # ========================================================
-
-    # --------------------------------------------------------
-    # Rechter Arm
-    # --------------------------------------------------------
-
-    human_r_x = np.dot(
-        arm_r,
-        forward_axis
-    )
-
-    human_r_y = np.dot(
-        arm_r,
-        left_axis
-    )
-
-    human_r_z = np.dot(
-        arm_r,
-        up_axis
-    )
-
-    # --------------------------------------------------------
-    # Linker Arm
-    # --------------------------------------------------------
-
-    human_l_x = np.dot(
-        arm_l,
-        forward_axis
-    )
-
-    human_l_y = np.dot(
-        arm_l,
-        left_axis
-    )
-
-    human_l_z = np.dot(
-        arm_l,
-        up_axis
-    )
-
-    # ========================================================
-    # SCHRITT 5.7:
-    # MENSCHLICHES LOKALES SYSTEM
-    # -> NAO KOORDINATENSYSTEM
-    #
-    # NAO:
-    #
-    # X = vorne
-    # Y = links
-    # Z = oben
-    #
-    # Der wichtige Unterschied zur alten Version:
-    #
-    # NAO-Y bekommt jetzt direkt den lokalen
-    # Links/Rechts-Wert.
-    #
-    # Es gibt kein zusätzliches "- dx".
-    # ========================================================
-
-    # --------------------------------------------------------
-    # Rechter Arm
-    # --------------------------------------------------------
-
-    nao_rx = (
-        0.16
-        +
-        human_r_x * skalierung
-    )
-
-    nao_ry = (
-        -0.10
-        +
-        human_r_y * skalierung
-    )
-
-    nao_rz = (
-        0.10
-        +
-        human_r_z * skalierung
-    )
-
-    # --------------------------------------------------------
-    # Linker Arm
-    # --------------------------------------------------------
-
-    nao_lx = (
-        0.16
-        +
-        human_l_x * skalierung
-    )
-
-    nao_ly = (
-        0.10
-        +
-        human_l_y * skalierung
-    )
-
-    nao_lz = (
-        0.10
-        +
-        human_l_z * skalierung
-    )
-
-    # ========================================================
-    # SCHRITT 5.8:
-    # FINALER 6D-PUNKT
-    #
-    # [X, Y, Z, Wx, Wy, Wz]
-    #
-    # Wir verwenden bewusst KEINE Rotation.
-    #
-    # Die spätere NAO-Ausführung kann deshalb mit
-    # axisMask = 7 arbeiten:
-    #
-    # 1 = X
-    # 2 = Y
-    # 4 = Z
-    # 7 = X + Y + Z
-    # ========================================================
-
-    path_r_arm.append([
-        nao_rx,
-        nao_ry,
-        nao_rz,
-        0.0,
-        0.0,
-        0.0
-    ])
-
-    path_l_arm.append([
-        nao_lx,
-        nao_ly,
-        nao_lz,
-        0.0,
-        0.0,
-        0.0
-    ])
-
-# ============================================================
-# BERECHNETE DATEN ALS CSV SPEICHERN
-# ============================================================
-
-os.makedirs(
-    os.path.dirname(output_csv),
-    exist_ok=True
-)
-
-with open(output_csv, 'w') as file:
-
-    writer = csv.writer(file)
-
-    writer.writerow([
-        'time',
-
-        'R_X',
-        'R_Y',
-        'R_Z',
-        'R_WX',
-        'R_WY',
-        'R_WZ',
-
-        'L_X',
-        'L_Y',
-        'L_Z',
-        'L_WX',
-        'L_WY',
-        'L_WZ'
-    ])
-
-    for i in range(len(time_list)):
-
-        writer.writerow([
-            time_list[i],
-
-            path_r_arm[i][0],
-            path_r_arm[i][1],
-            path_r_arm[i][2],
-            path_r_arm[i][3],
-            path_r_arm[i][4],
-            path_r_arm[i][5],
-
-            path_l_arm[i][0],
-            path_l_arm[i][1],
-            path_l_arm[i][2],
-            path_l_arm[i][3],
-            path_l_arm[i][4],
-            path_l_arm[i][5]
+        human_right = np.array([
+            np.dot(right_arm, forward_axis),
+            np.dot(right_arm, left_axis),
+            np.dot(right_arm, up_axis),
+        ])
+        human_left = np.array([
+            np.dot(left_arm, forward_axis),
+            np.dot(left_arm, left_axis),
+            np.dot(left_arm, up_axis),
         ])
 
-# ============================================================
-# SCHRITT 6:
-# INFORMATIONEN ZUR TRAJEKTORIE
-# ============================================================
+        nao_right = np.array([0.16, -0.10, 0.10]) + human_right * scale
+        nao_left = np.array([0.16, 0.10, 0.10]) + human_left * scale
 
-r_array = np.array(path_r_arm)
-l_array = np.array(path_l_arm)
+        nao_right = clip_point(nao_right, RIGHT_LIMITS)
+        nao_left = clip_point(nao_left, LEFT_LIMITS)
 
-print("")
-print("==========================================")
-print("BERECHNUNG ABGESCHLOSSEN")
-print("==========================================")
+        # Rotation bleibt ungenutzt, weil das Ausfuehrungsskript axisMask 7 nutzt.
+        right_path.append([
+            nao_right[0], nao_right[1], nao_right[2], 0.0, 0.0, 0.0
+        ])
+        left_path.append([
+            nao_left[0], nao_left[1], nao_left[2], 0.0, 0.0, 0.0
+        ])
 
-print("Frames:", len(time_list))
+    os.makedirs(os.path.dirname(OUTPUT_CSV), exist_ok=True)
 
-print("Dauer:",
-      time_list[-1],
-      "Sekunden")
+    with open(OUTPUT_CSV, 'w', newline='', encoding='utf-8') as csv_file:
+        writer = csv.writer(csv_file)
+        writer.writerow([
+            'time',
+            'R_X', 'R_Y', 'R_Z', 'R_WX', 'R_WY', 'R_WZ',
+            'L_X', 'L_Y', 'L_Z', 'L_WX', 'L_WY', 'L_WZ'
+        ])
 
-print("MediaPipe Schulterabstand 3D:",
-      mp_shoulder_dist)
+        for index, timestamp in enumerate(times):
+            writer.writerow(
+                [timestamp]
+                + right_path[index]
+                + left_path[index]
+            )
 
-print("NAO Schulterabstand:",
-      NAO_SCHULTERABSTAND)
+    right_array = np.asarray(right_path)
+    left_array = np.asarray(left_path)
 
-print("Skalierung:",
-      skalierung)
+    print("")
+    print("==========================================")
+    print("BERECHNUNG ABGESCHLOSSEN")
+    print("==========================================")
+    print("Frames:", len(times))
+    print("Dauer:", times[-1], "Sekunden")
+    print("Rechter Arm X/Y/Z min:", np.min(right_array[:, :3], axis=0))
+    print("Rechter Arm X/Y/Z max:", np.max(right_array[:, :3], axis=0))
+    print("Linker Arm X/Y/Z min:", np.min(left_array[:, :3], axis=0))
+    print("Linker Arm X/Y/Z max:", np.max(left_array[:, :3], axis=0))
+    print("Gespeichert:", OUTPUT_CSV)
+    print("==========================================")
 
-print("")
-print("Rechter Arm:")
-print("  X min/max:",
-      np.min(r_array[:, 0]),
-      np.max(r_array[:, 0]))
 
-print("  Y min/max:",
-      np.min(r_array[:, 1]),
-      np.max(r_array[:, 1]))
-
-print("  Z min/max:",
-      np.min(r_array[:, 2]),
-      np.max(r_array[:, 2]))
-
-print("")
-print("Linker Arm:")
-print("  X min/max:",
-      np.min(l_array[:, 0]),
-      np.max(l_array[:, 0]))
-
-print("  Y min/max:",
-      np.min(l_array[:, 1]),
-      np.max(l_array[:, 1]))
-
-print("  Z min/max:",
-      np.min(l_array[:, 2]),
-      np.max(l_array[:, 2]))
-
-print("")
-print("Gespeichert:")
-print(output_csv)
-
-print("==========================================")
+if __name__ == '__main__':
+    main()
