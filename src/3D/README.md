@@ -27,7 +27,7 @@ Ausführung mit Python 2.7/NAOqi:
 ```bash
 set NAO_IP=192.168.200.74
 set NAO_PORT=9559
-python 3_nao_make_moves_3d.py
+python 3_nao_make_moves.py
 ```
 
 Vor dem echten Roboterlauf:

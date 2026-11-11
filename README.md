@@ -1,7 +1,7 @@
 ### Ablaufdiagramm des Programms
 
 1. `nao-video-record.py` nimmt ein Video mit der NAO-Kamera auf.
-2. `src/3D/1_detect_points_3d.py` erkennt die Person und schreibt relative 3D-Landmarks.
+2. `src/3D/1_detect_points.py` erkennt die Person und schreibt relative 3D-Landmarks.
 3. `src/3D/2_coordinates_to_motion_graph.py` berechnet Winkel aus den 3D-Punkten.
 4. Die Winkel werden anschließend auf die NAO-Gelenke retargetiert.
 
@@ -20,7 +20,7 @@ pip install mediapipe opencv-python numpy
 Ausführung aus `src/3D`:
 
 ```bash
-python 1_detect_points_3d.py
+python 1_detect_points.py
 python 2_coordinates_to_motion_graph.py
 ```
 
